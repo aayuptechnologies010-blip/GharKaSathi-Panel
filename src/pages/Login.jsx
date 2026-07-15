@@ -64,11 +64,6 @@ export default function Login({ onLogin }) {
           </div>
         </div>
 
-        {/* Credentials Info Note */}
-        <div className="p-3.5 bg-slate-700/30 border border-slate-700 rounded-xl text-center">
-          <p className="text-brand-gold text-[11px] font-semibold">Demo Console Access Mode</p>
-          <p className="text-slate-400 text-[10px] mt-0.5">Use any email & password (length &gt;= 6 digits)</p>
-        </div>
 
         {/* Form Inputs */}
         <form onSubmit={handleSubmit} className="space-y-5">

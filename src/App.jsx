@@ -12,6 +12,7 @@ import Commission from './pages/Commission';
 import Payments from './pages/Payments';
 import Complaints from './pages/Complaints';
 import Notifications from './pages/Notifications';
+import Login from './pages/Login';
 
 // Page Loader Spinner Component (Localized inside Main Content container)
 function Loader() {
@@ -31,7 +32,7 @@ function Loader() {
 }
 
 // Router Inner Wrapper to enable useLocation
-function DashboardLayout() {
+function DashboardLayout({ onLogout }) {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const location = useLocation();
@@ -58,6 +59,7 @@ function DashboardLayout() {
         <Navbar 
           isCollapsed={isCollapsed} 
           toggleSidebar={() => setIsCollapsed(!isCollapsed)} 
+          onLogout={onLogout}
         />
 
         {/* Main Body */}
@@ -84,9 +86,27 @@ function DashboardLayout() {
 }
 
 export default function App() {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+
+  useEffect(() => {
+    const auth = localStorage.getItem('isAuthenticated');
+    if (auth === 'true') {
+      setIsAuthenticated(true);
+    }
+  }, []);
+
+  const handleLogout = () => {
+    localStorage.removeItem('isAuthenticated');
+    setIsAuthenticated(false);
+  };
+
   return (
     <Router>
-      <DashboardLayout />
+      {isAuthenticated ? (
+        <DashboardLayout onLogout={handleLogout} />
+      ) : (
+        <Login onLogin={() => setIsAuthenticated(true)} />
+      )}
     </Router>
   );
 }

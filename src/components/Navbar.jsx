@@ -1,8 +1,8 @@
 import React from 'react';
-import { FaBell, FaSearch, FaChevronLeft, FaChevronRight } from 'react-icons/fa';
+import { FaBell, FaSearch, FaChevronLeft, FaChevronRight, FaSignOutAlt } from 'react-icons/fa';
 import Swal from 'sweetalert2';
 
-export default function Navbar({ isCollapsed, toggleSidebar }) {
+export default function Navbar({ isCollapsed, toggleSidebar, onLogout }) {
   const showNotifications = () => {
     Swal.fire({
       title: 'Alert Notifications',
@@ -20,6 +20,31 @@ export default function Navbar({ isCollapsed, toggleSidebar }) {
       `,
       confirmButtonText: 'Clear All',
       confirmButtonColor: '#13264d'
+    });
+  };
+
+  const handleProfileClick = () => {
+    Swal.fire({
+      title: 'Super Admin Console',
+      text: 'Do you want to log out from this device session?',
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonText: 'Logout',
+      confirmButtonColor: '#ef4444',
+      cancelButtonText: 'Cancel',
+      cancelButtonColor: '#64748b'
+    }).then((result) => {
+      if (result.isConfirmed) {
+        onLogout();
+        Swal.fire({
+          toast: true,
+          position: 'top-end',
+          icon: 'success',
+          title: 'Logged out successfully!',
+          showConfirmButton: false,
+          timer: 1500
+        });
+      }
     });
   };
 
@@ -52,7 +77,7 @@ export default function Navbar({ isCollapsed, toggleSidebar }) {
         {/* Notifications */}
         <button 
           onClick={showNotifications}
-          className="p-2 bg-slate-50 hover:bg-slate-100 text-slate-600 rounded-lg relative transition"
+          className="p-2 bg-slate-50 hover:bg-slate-100 text-slate-600 rounded-lg relative transition cursor-pointer"
         >
           <FaBell className="text-xs" />
           <span className="absolute top-1 right-1 w-2 h-2 bg-rose-500 border border-white rounded-full"></span>
@@ -68,8 +93,16 @@ export default function Navbar({ isCollapsed, toggleSidebar }) {
             src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120" 
             alt="Profile Avatar" 
             className="w-8 h-8 rounded-lg border border-slate-100 object-cover cursor-pointer hover:opacity-85 transition"
-            onClick={() => Swal.fire('Profile Panel', 'Aayush Raj (Super Admin) settings.', 'info')}
+            onClick={handleProfileClick}
           />
+          {/* Quick Logout Button */}
+          <button 
+            onClick={handleProfileClick}
+            className="p-2 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg transition"
+            title="Sign Out"
+          >
+            <FaSignOutAlt className="text-xs" />
+          </button>
         </div>
       </div>
     </header>

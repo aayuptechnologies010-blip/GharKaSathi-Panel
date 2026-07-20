@@ -89,14 +89,15 @@ export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   useEffect(() => {
-    const auth = localStorage.getItem('isAuthenticated');
-    if (auth === 'true') {
+    const token = localStorage.getItem('admin_token');
+    if (token) {
       setIsAuthenticated(true);
     }
   }, []);
 
   const handleLogout = () => {
-    localStorage.removeItem('isAuthenticated');
+    localStorage.removeItem('admin_token');
+    localStorage.removeItem('admin_account');
     setIsAuthenticated(false);
   };
 

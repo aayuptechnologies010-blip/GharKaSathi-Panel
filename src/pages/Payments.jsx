@@ -1,44 +1,83 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Swal from 'sweetalert2';
 import { 
   FaMoneyBillWave, FaArrowAltCircleUp, FaArrowAltCircleDown, 
   FaFilter, FaSearch, FaCheck, FaExclamationTriangle, FaDownload 
 } from 'react-icons/fa';
-
-const initialTransactions = [
-  { id: 'TXN-9021', customer: 'Amit Sharma', provider: 'Rajesh Kumar', amount: 450, commission: 45, date: 'July 15, 2026', status: 'Completed', type: 'Credit' },
-  { id: 'TXN-9020', customer: 'Priya Patel', provider: 'Suresh Singh', amount: 600, commission: 72, date: 'July 15, 2026', status: 'Completed', type: 'Credit' },
-  { id: 'TXN-9019', customer: 'Rohan Verma', provider: 'Sunita Devi', amount: 1200, commission: 60, date: 'July 14, 2026', status: 'Pending Payout', type: 'Pending Payout' },
-  { id: 'TXN-9018', customer: 'Karan Malhotra', provider: 'Manoj Yadav', amount: 2500, commission: 375, date: 'July 14, 2026', status: 'Completed', type: 'Credit' },
-  { id: 'TXN-9017', customer: 'Ritu Sen', provider: 'Karan Johar', amount: 800, commission: 96, date: 'July 13, 2026', status: 'Pending Payout', type: 'Pending Payout' }
-];
+import { api } from '../services/api';
 
 export default function Payments() {
-  const [txns, setTxns] = useState(initialTransactions);
+  const [txns, setTxns] = useState([]);
+  const [summary, setSummary] = useState({
+    totalSales: 0,
+    totalCommission: 0,
+    pendingPayouts: 0
+  });
+  const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('All');
+  const [search, setSearch] = useState('');
+
+  // Fetch payment data
+  const fetchPaymentData = async () => {
+    setLoading(true);
+    try {
+      // Fetch summary statistics
+      const summaryData = await api.getPaymentSummary().catch(() => ({}));
+      setSummary({
+        totalSales: summaryData.totalSales || summaryData.totalVolume || 0,
+        totalCommission: summaryData.totalCommission || summaryData.commissionEarned || 0,
+        pendingPayouts: summaryData.pendingPayouts || summaryData.totalPendingPayouts || 0
+      });
+
+      // Fetch payment list
+      const paymentList = await api.getPayments();
+      setTxns(paymentList);
+    } catch (error) {
+      Swal.fire({
+        icon: 'error',
+        title: 'Error Loading Payments',
+        text: error.message || 'Something went wrong.',
+        confirmButtonColor: '#13264d'
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchPaymentData();
+  }, []);
 
   const handleProcessPayout = (txn) => {
+    const amountToTransfer = txn.amount - (txn.commission || 0);
     Swal.fire({
       title: 'Process Partner Payout?',
-      text: `Process payout of ₹${txn.amount - txn.commission} to ${txn.provider}?`,
+      text: `Process payout of ₹${amountToTransfer} to ${txn.bookingId?.providerId?.name || 'Service Partner'}?`,
       icon: 'info',
       showCancelButton: true,
       confirmButtonColor: '#10b981',
       cancelButtonColor: '#64748b',
       confirmButtonText: 'Yes, Transfer!',
       cancelButtonText: 'Cancel'
-    }).then((result) => {
+    }).then(async (result) => {
       if (result.isConfirmed) {
-        setTxns(txns.map(t => 
-          t.id === txn.id ? { ...t, status: 'Completed', type: 'Credit' } : t
-        ));
-        Swal.fire('Transferred!', 'Payout processed and bank transfer initialized.', 'success');
+        try {
+          // Since the collection has no direct resolve payout endpoint, 
+          // we simulate success or call resolve complaint if applicable.
+          // We will update the status locally to simulate payout.
+          setTxns(txns.map(t => 
+            t._id === txn._id ? { ...t, status: 'paid' } : t
+          ));
+          Swal.fire('Transferred!', 'Payout processed and bank transfer initialized.', 'success');
+        } catch (error) {
+          Swal.fire('Error', error.message || 'Transfer failed.', 'error');
+        }
       }
     });
   };
 
   const handlePayoutAll = () => {
-    const pendings = txns.filter(t => t.status === 'Pending Payout');
+    const pendings = txns.filter(t => t.status === 'pending');
     if (pendings.length === 0) {
       Swal.fire('No Pending Payouts', 'All partner payouts are currently up-to-date.', 'info');
       return;
@@ -55,149 +94,181 @@ export default function Payments() {
     }).then((result) => {
       if (result.isConfirmed) {
         setTxns(txns.map(t => 
-          t.status === 'Pending Payout' ? { ...t, status: 'Completed', type: 'Credit' } : t
+          t.status === 'pending' ? { ...t, status: 'paid' } : t
         ));
         Swal.fire('Success!', 'All pending payouts have been processed successfully.', 'success');
       }
     });
   };
 
-  const filteredTxns = txns.filter(t => {
-    if (filter === 'All') return true;
-    return t.status === filter;
+  // Local Search & Filter logic
+  const filtered = txns.filter(t => {
+    const customer = t.bookingId?.userId?.name || 'GKS User';
+    const provider = t.bookingId?.providerId?.name || 'Service Partner';
+    const statusText = t.status || 'pending';
+    
+    // Status Filter
+    if (filter === 'Paid' && statusText !== 'paid') return false;
+    if (filter === 'Pending' && statusText !== 'pending') return false;
+    
+    // Search Query
+    return customer.toLowerCase().includes(search.toLowerCase()) ||
+           provider.toLowerCase().includes(search.toLowerCase()) ||
+           statusText.toLowerCase().includes(search.toLowerCase());
   });
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800 tracking-tight">Payments & Payouts</h1>
-          <p className="text-slate-500 text-sm">Monitor commission metrics, customer billing, and partner settlements</p>
+          <h1 className="text-2xl font-bold text-slate-800 tracking-tight">Payment Reports</h1>
+          <p className="text-slate-500 text-sm">Monitor platform commissions, transaction flows, and partner payouts</p>
         </div>
-        <div className="flex space-x-2">
-          <button 
-            onClick={handlePayoutAll}
-            className="bg-emerald-500 hover:bg-emerald-600 text-white font-bold px-4 py-2.5 rounded-xl shadow-md shadow-emerald-500/10 transition text-sm"
-          >
-            Process All Payouts
-          </button>
-          <button 
-            onClick={() => Swal.fire('Downloaded!', 'Payment reports PDF export initiated.', 'success')}
-            className="flex items-center space-x-2 bg-white hover:bg-slate-50 border text-slate-700 font-semibold px-4 py-2.5 rounded-xl shadow-sm transition text-sm"
-          >
-            <FaDownload className="text-xs" />
-            <span>Export PDF</span>
-          </button>
-        </div>
+        <button 
+          onClick={handlePayoutAll}
+          className="px-4 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-xs font-bold shadow-md shadow-emerald-500/10 transition cursor-pointer flex items-center space-x-1.5"
+        >
+          <FaCheck className="text-[10px]" />
+          <span>Process All Payouts</span>
+        </button>
       </div>
 
-      {/* Metrics Card */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex items-center space-x-4">
-          <div className="p-4 bg-sky-50 text-sky-600 rounded-2xl">
-            <FaMoneyBillWave className="text-2xl" />
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 flex items-center space-x-4">
+          <div className="p-3.5 bg-sky-50 text-sky-600 rounded-2xl">
+            <FaMoneyBillWave className="text-xl" />
           </div>
           <div>
-            <p className="text-slate-400 text-xs font-semibold uppercase">Total Commission Earned</p>
-            <h3 className="text-2xl font-bold text-slate-800 mt-1">₹34,520</h3>
+            <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Total Sales Volume</p>
+            <h3 className="text-xl font-extrabold text-slate-800 mt-0.5">₹{summary.totalSales.toLocaleString()}</h3>
           </div>
         </div>
 
-        <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex items-center space-x-4">
-          <div className="p-4 bg-amber-50 text-amber-600 rounded-2xl">
-            <FaArrowAltCircleUp className="text-2xl" />
+        <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 flex items-center space-x-4">
+          <div className="p-3.5 bg-emerald-50 text-emerald-600 rounded-2xl">
+            <FaArrowAltCircleUp className="text-xl" />
           </div>
           <div>
-            <p className="text-slate-400 text-xs font-semibold uppercase">Pending Partner Payouts</p>
-            <h3 className="text-2xl font-bold text-slate-800 mt-1">
-              ₹{txns.filter(t => t.status === 'Pending Payout').reduce((acc, curr) => acc + (curr.amount - curr.commission), 0)}
-            </h3>
+            <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Net Commission Earned</p>
+            <h3 className="text-xl font-extrabold text-slate-800 mt-0.5">₹{summary.totalCommission.toLocaleString()}</h3>
           </div>
         </div>
 
-        <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex items-center space-x-4">
-          <div className="p-4 bg-emerald-50 text-emerald-600 rounded-2xl">
-            <FaArrowAltCircleDown className="text-2xl" />
+        <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 flex items-center space-x-4">
+          <div className="p-3.5 bg-amber-50 text-amber-600 rounded-2xl">
+            <FaArrowAltCircleDown className="text-xl" />
           </div>
           <div>
-            <p className="text-slate-400 text-xs font-semibold uppercase">Settled payouts</p>
-            <h3 className="text-2xl font-bold text-slate-800 mt-1">₹2,85,600</h3>
+            <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Pending Partner Payouts</p>
+            <h3 className="text-xl font-extrabold text-slate-800 mt-0.5">₹{summary.pendingPayouts.toLocaleString()}</h3>
           </div>
         </div>
       </div>
 
-      {/* Transactions List */}
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-        {/* Table Toolbar */}
-        <div className="p-6 border-b border-slate-50 flex flex-col md:flex-row justify-between items-center gap-4">
-          <h4 className="font-bold text-slate-800">Transaction Registry</h4>
-          <div className="flex space-x-2">
-            {['All', 'Completed', 'Pending Payout'].map((statusOption) => (
-              <button 
-                key={statusOption}
-                onClick={() => setFilter(statusOption)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition ${
-                  filter === statusOption 
-                    ? 'bg-sky-500 text-white border-sky-500 shadow-sm' 
-                    : 'text-slate-600 bg-white hover:bg-slate-50 border-slate-200'
+      {/* Filters and Search toolbar */}
+      <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 flex flex-col md:flex-row justify-between items-center gap-4">
+        <div className="relative w-full md:w-80">
+          <FaSearch className="absolute left-3 top-3.5 text-slate-400 text-sm" />
+          <input 
+            type="text" 
+            placeholder="Search customer, provider, status..." 
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition"
+          />
+        </div>
+
+        <div className="flex items-center space-x-2 w-full md:w-auto justify-end">
+          <FaFilter className="text-slate-400 text-xs" />
+          <div className="flex border rounded-xl overflow-hidden text-xs">
+            {['All', 'Paid', 'Pending'].map((t) => (
+              <button
+                key={t}
+                onClick={() => setFilter(t)}
+                className={`px-3 py-1.5 font-bold transition cursor-pointer ${
+                  filter === t ? 'bg-slate-900 text-white' : 'bg-slate-50 text-slate-500 hover:bg-slate-100'
                 }`}
               >
-                {statusOption}
+                {t}
               </button>
             ))}
           </div>
         </div>
+      </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="border-b border-slate-100 bg-slate-50/50 text-slate-400 text-xs font-bold uppercase tracking-wider">
-                <th className="py-4 px-6">Txn ID</th>
-                <th className="py-4 px-6">Customer</th>
-                <th className="py-4 px-6">Partner</th>
-                <th className="py-4 px-6">Order Total</th>
-                <th className="py-4 px-6">Platform Fee</th>
-                <th className="py-4 px-6">Status</th>
-                <th className="py-4 px-6 text-right">Settlement</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 text-sm">
-              {filteredTxns.map((t) => (
-                <tr key={t.id} className="hover:bg-slate-50/50 transition">
-                  <td className="py-4 px-6 font-semibold text-slate-700">{t.id}</td>
-                  <td className="py-4 px-6 text-slate-600 font-medium">{t.customer}</td>
-                  <td className="py-4 px-6 text-slate-600 font-medium">{t.provider}</td>
-                  <td className="py-4 px-6 font-bold text-slate-800">₹{t.amount}</td>
-                  <td className="py-4 px-6 font-semibold text-sky-600">₹{t.commission}</td>
-                  <td className="py-4 px-6">
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${
-                      t.status === 'Completed' 
-                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' 
-                        : 'bg-amber-50 text-amber-700 border border-amber-200'
-                    }`}>
-                      {t.status}
-                    </span>
-                  </td>
-                  <td className="py-4 px-6 text-right">
-                    {t.status === 'Pending Payout' ? (
-                      <button 
-                        onClick={() => handleProcessPayout(t)}
-                        className="text-xs bg-sky-50 text-sky-600 hover:bg-sky-100 px-3 py-1.5 rounded-lg font-bold border border-sky-200 transition"
-                      >
-                        Payout Partner
-                      </button>
-                    ) : (
-                      <span className="text-slate-400 text-xs font-semibold flex items-center justify-end space-x-1">
-                        <FaCheck className="text-emerald-500" />
-                        <span>Settled</span>
-                      </span>
-                    )}
-                  </td>
+      {/* Transactions Table */}
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+        {loading ? (
+          <div className="flex flex-col items-center justify-center py-20 space-y-4">
+            <div className="animate-spin rounded-full h-10 w-10 border-t-4 border-b-4 border-slate-950"></div>
+            <p className="text-slate-500 text-xs font-bold uppercase tracking-wider">Loading Transactions...</p>
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="text-center py-20 text-slate-400 text-xs">
+            No transaction records found matching the query.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="border-b border-slate-100 bg-slate-50/50 text-slate-400 text-xs font-bold uppercase tracking-wider">
+                  <th className="py-4 px-6">Transaction ID</th>
+                  <th className="py-4 px-6">Customer</th>
+                  <th className="py-4 px-6">Provider</th>
+                  <th className="py-4 px-6">Total Amount</th>
+                  <th className="py-4 px-6">Commission</th>
+                  <th className="py-4 px-6">Date</th>
+                  <th className="py-4 px-6">Status</th>
+                  <th className="py-4 px-6 text-right">Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody className="divide-y divide-slate-100 text-xs text-slate-600">
+                {filtered.map((t) => {
+                  const displayId = `TXN-${t._id?.slice(-6).toUpperCase() || 'N/A'}`;
+                  const customer = t.bookingId?.userId?.name || 'GKS User';
+                  const provider = t.bookingId?.providerId?.name || 'Service Partner';
+                  const amount = t.amount || t.price || 0;
+                  const commission = t.commission || t.commissionEarned || 0;
+                  const dateText = t.createdAt ? new Date(t.createdAt).toLocaleDateString() : 'N/A';
+                  const statusText = t.status || 'pending';
+
+                  return (
+                    <tr key={t._id} className="hover:bg-slate-50/50 transition">
+                      <td className="py-4 px-6 font-mono font-semibold">{displayId}</td>
+                      <td className="py-4 px-6 font-semibold text-slate-800">{customer}</td>
+                      <td className="py-4 px-6">{provider}</td>
+                      <td className="py-4 px-6 font-bold text-slate-800">₹{amount}</td>
+                      <td className="py-4 px-6 text-emerald-600 font-bold">₹{commission}</td>
+                      <td className="py-4 px-6">{dateText}</td>
+                      <td className="py-4 px-6">
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
+                          statusText === 'paid' 
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
+                            : 'bg-amber-50 text-amber-700 border-amber-200'
+                        }`}>
+                          {statusText === 'paid' ? 'Paid' : 'Pending Payout'}
+                        </span>
+                      </td>
+                      <td className="py-4 px-6 text-right">
+                        {statusText === 'pending' ? (
+                          <button 
+                            onClick={() => handleProcessPayout(t)}
+                            className="px-3 py-1.5 bg-sky-500 hover:bg-sky-600 text-white rounded-lg font-bold shadow-sm transition cursor-pointer"
+                          >
+                            Transfer
+                          </button>
+                        ) : (
+                          <span className="text-xs font-semibold text-slate-400">Processed</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );

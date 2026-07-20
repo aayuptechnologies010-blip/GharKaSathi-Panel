@@ -2,13 +2,15 @@ import React, { useState } from 'react';
 import Swal from 'sweetalert2';
 import Logo from '../components/Logo';
 import { FaEnvelope, FaLock, FaSignInAlt, FaEye, FaEyeSlash } from 'react-icons/fa';
+import { api } from '../services/api';
 
 export default function Login({ onLogin }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
     // Validations
@@ -32,18 +34,34 @@ export default function Login({ onLogin }) {
       return;
     }
 
-    // Success Authentication
-    localStorage.setItem('isAuthenticated', 'true');
-    onLogin();
+    setIsLoading(true);
+    try {
+      const response = await api.login(email, password);
+      
+      // Save details to localStorage
+      localStorage.setItem('admin_token', response.token);
+      localStorage.setItem('admin_account', JSON.stringify(response.account));
 
-    Swal.fire({
-      toast: true,
-      position: 'top-end',
-      icon: 'success',
-      title: 'Welcome! Signed in successfully.',
-      showConfirmButton: false,
-      timer: 2000
-    });
+      Swal.fire({
+        toast: true,
+        position: 'top-end',
+        icon: 'success',
+        title: 'Welcome! Signed in successfully.',
+        showConfirmButton: false,
+        timer: 2000
+      });
+
+      onLogin();
+    } catch (error) {
+      Swal.fire({
+        icon: 'error',
+        title: 'Sign In Failed',
+        text: error.message || 'Unable to connect to the server. Please try again.',
+        confirmButtonColor: '#13264d'
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -76,8 +94,9 @@ export default function Login({ onLogin }) {
                 type="email" 
                 placeholder="admin@gharkasathi.com"
                 value={email}
+                disabled={isLoading}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 bg-slate-900/60 border border-slate-700 rounded-xl text-white text-xs placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-gold/50 focus:bg-slate-950 transition"
+                className="w-full pl-10 pr-4 py-2.5 bg-slate-900/60 border border-slate-700 rounded-xl text-white text-xs placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-gold/50 focus:bg-slate-950 transition disabled:opacity-50"
               />
             </div>
           </div>
@@ -91,13 +110,15 @@ export default function Login({ onLogin }) {
                 type={showPassword ? "text" : "password"} 
                 placeholder="******"
                 value={password}
+                disabled={isLoading}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full pl-10 pr-10 py-2.5 bg-slate-900/60 border border-slate-700 rounded-xl text-white text-xs placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-gold/50 focus:bg-slate-950 transition"
+                className="w-full pl-10 pr-10 py-2.5 bg-slate-900/60 border border-slate-700 rounded-xl text-white text-xs placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-gold/50 focus:bg-slate-950 transition disabled:opacity-50"
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-3 text-slate-500 hover:text-slate-300 transition"
+                disabled={isLoading}
+                className="absolute right-3 top-3 text-slate-500 hover:text-slate-300 transition disabled:opacity-50"
               >
                 {showPassword ? <FaEyeSlash className="text-xs" /> : <FaEye className="text-xs" />}
               </button>
@@ -107,10 +128,15 @@ export default function Login({ onLogin }) {
           {/* Submit */}
           <button 
             type="submit"
-            className="w-full flex items-center justify-center space-x-2 bg-brand-gold text-brand-navy hover:bg-brand-gold-light text-xs font-bold py-3 rounded-xl shadow-lg shadow-brand-gold/10 transition mt-2 cursor-pointer"
+            disabled={isLoading}
+            className="w-full flex items-center justify-center space-x-2 bg-brand-gold text-brand-navy hover:bg-brand-gold-light text-xs font-bold py-3 rounded-xl shadow-lg shadow-brand-gold/10 transition mt-2 cursor-pointer disabled:opacity-50"
           >
-            <FaSignInAlt className="text-xs" />
-            <span>Access Console</span>
+            {isLoading ? (
+              <div className="h-4 w-4 border-2 border-brand-navy border-t-transparent rounded-full animate-spin"></div>
+            ) : (
+              <FaSignInAlt className="text-xs" />
+            )}
+            <span>{isLoading ? 'Connecting...' : 'Access Console'}</span>
           </button>
         </form>
       </div>
